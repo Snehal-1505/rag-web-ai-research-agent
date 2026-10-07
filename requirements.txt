@@ -1,0 +1,12 @@
+haystack-ai>=2.0.0
+sentence-transformers-haystack
+nltk
+streamlit
+pymupdf
+python-docx
+sentence-transformers
+python-dotenv
+tavily-python
+duckduckgo-search
+google-genai
+pytest

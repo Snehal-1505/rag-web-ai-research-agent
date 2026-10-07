@@ -1,0 +1,12 @@
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.streamlit/
+data/uploads/*
+!data/uploads/.gitkeep
+data/documents/*
+!data/documents/.gitkeep
