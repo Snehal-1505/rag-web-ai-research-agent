@@ -1,17 +1,21 @@
 """
-RAG + Web AI Research Agent - Streamlit Application
-Redesigned Modern Dashboard UI Structure
+RAG + Web AI Research Agent — Clean Chatbot UI
+A minimal, professional AI research chatbot interface.
 """
 import os
 import sys
-import time
 import tempfile
+import logging
 from pathlib import Path
 from typing import List, Dict, Any
 
 import streamlit as st
 
-# Add project root to path so our src modules work correctly
+# ── Logging (errors to terminal, not UI) ──────────────────────────────────────
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
+
+# ── Path setup ────────────────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.config import GEMINI_API_KEY, TAVILY_API_KEY, UPLOADS_DIR
@@ -19,760 +23,599 @@ from src.ingestion.document_loader import load_document
 from src.ingestion.chunker import chunk_documents
 from src.ingestion.indexer import generate_document_embeddings
 from src.rag.document_store import DocumentStoreManager
-from src.rag.pipeline import run_rag_pipeline
 from src.agent.research_agent import ResearchAgent
 
-# ─────────────────────────────────────────────
-# PAGE CONFIGURATION
-# ─────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="RAG + Web AI Research Agent",
+    page_title="AI Research Assistant",
     page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────
-# SESSION STATE INITIALIZATION
-# ─────────────────────────────────────────────
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+# ── Session state ─────────────────────────────────────────────────────────────
+def init_session():
+    defaults = {
+        "messages": [],
+        "doc_store_manager": DocumentStoreManager(),
+        "indexed_files": [],
+        "api_key": os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or ""),
+        "tavily_key": os.getenv("TAVILY_API_KEY", TAVILY_API_KEY or ""),
+        "top_k_docs": 5,
+        "max_web_results": 5,
+        "upload_status": None,   # None | "processing" | "ready" | "error"
+        "upload_filename": "",
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
 
-if "doc_store_manager" not in st.session_state:
-    st.session_state.doc_store_manager = DocumentStoreManager()
+init_session()
 
-if "doc_count" not in st.session_state:
-    st.session_state.doc_count = 0
-
-if "chunk_count" not in st.session_state:
-    st.session_state.chunk_count = 0
-
-if "indexed_files" not in st.session_state:
-    st.session_state.indexed_files = []
-
-if "indexed_chunks_preview" not in st.session_state:
-    st.session_state.indexed_chunks_preview = []
-
-if "api_key" not in st.session_state or not st.session_state.api_key:
-    from src.config import GEMINI_API_KEY
-    st.session_state.api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY or "")
-
-if "tavily_key" not in st.session_state or not st.session_state.tavily_key:
-    from src.config import TAVILY_API_KEY
-    st.session_state.tavily_key = os.getenv("TAVILY_API_KEY", TAVILY_API_KEY or "")
-
-if "top_k_docs" not in st.session_state:
-    st.session_state.top_k_docs = 5
-
-if "max_web_results" not in st.session_state:
-    st.session_state.max_web_results = 5
-
-if "agent_mode" not in st.session_state:
-    st.session_state.agent_mode = "🤖 Autonomous AI Agent (Hybrid)"
-
-
-# ─────────────────────────────────────────────
-# DESIGN SYSTEM & CUSTOM CSS STYLING
-# ─────────────────────────────────────────────
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
-    }
+  html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+    background-color: #F8FAFC;
+    color: #0F172A;
+  }
 
-    .stApp {
-        background: radial-gradient(circle at top right, #1a1c36 0%, #0d0e1b 50%, #080911 100%);
-        color: #e2e8f0;
-    }
+  /* ── Hide Streamlit chrome ──────────────────────────────────────────── */
+  #MainMenu, footer, header { visibility: hidden; }
+  [data-testid="stSidebarNav"] { display: none; }
+  section[data-testid="stSidebar"] { display: none !important; }
+  .block-container {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    max-width: 820px !important;
+  }
 
-    /* Top Glass Navbar */
-    .top-navbar {
-        background: rgba(18, 20, 39, 0.7);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 1.2rem 1.8rem;
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    }
+  /* ── Top header ─────────────────────────────────────────────────────── */
+  .chat-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #ffffff;
+    border-bottom: 1px solid #E2E8F0;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #2563EB, #14B8A6);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .header-text h1 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0F172A;
+    margin: 0;
+    line-height: 1.2;
+  }
+  .header-text p {
+    font-size: 0.75rem;
+    color: #64748B;
+    margin: 0;
+    line-height: 1.4;
+  }
+  .header-clear-btn {
+    font-size: 0.75rem;
+    color: #94A3B8;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #E2E8F0;
+    background: transparent;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+  .header-clear-btn:hover {
+    color: #64748B;
+    background: #F1F5F9;
+  }
 
-    .nav-brand {
-        display: flex;
-        align-items: center;
-        gap: 0.8rem;
-    }
+  /* ── Upload status pill ─────────────────────────────────────────────── */
+  .upload-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.78rem;
+    color: #15803D;
+    font-weight: 500;
+    margin: 8px 0 4px 0;
+  }
+  .upload-pill-processing {
+    background: #EFF6FF;
+    border-color: #BFDBFE;
+    color: #1D4ED8;
+  }
+  .upload-pill-error {
+    background: #FEF2F2;
+    border-color: #FECACA;
+    color: #DC2626;
+  }
 
-    .nav-title {
-        font-size: 1.6rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #38bdf8 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -0.5px;
-        margin: 0;
-    }
+  /* ── Chat messages ──────────────────────────────────────────────────── */
+  .stChatMessage {
+    padding: 0 !important;
+    margin-bottom: 4px !important;
+  }
 
-    .nav-subtitle {
-        color: #94a3b8;
-        font-size: 0.85rem;
-        font-weight: 400;
-        margin: 0;
-    }
+  /* User bubble */
+  [data-testid="stChatMessageContent"][class*="user"] {
+    background: #EFF6FF !important;
+    border: 1px solid #BFDBFE !important;
+    border-radius: 16px 16px 4px 16px !important;
+    padding: 12px 16px !important;
+    color: #1E3A5F !important;
+    font-size: 0.93rem !important;
+  }
 
-    /* Status Pills */
-    .status-pill-group {
-        display: flex;
-        gap: 0.6rem;
-        align-items: center;
-    }
+  /* AI bubble */
+  [data-testid="stChatMessageContent"][class*="assistant"] {
+    background: #ffffff !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 4px 16px 16px 16px !important;
+    padding: 14px 18px !important;
+    font-size: 0.93rem !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+  }
 
-    .status-pill {
-        background: rgba(30, 34, 64, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-    }
+  /* Avatar override */
+  [data-testid="stChatMessageAvatarUser"] {
+    background: #2563EB !important;
+    color: white !important;
+  }
+  [data-testid="stChatMessageAvatarAssistant"] {
+    background: linear-gradient(135deg, #2563EB, #14B8A6) !important;
+    color: white !important;
+  }
 
-    .dot-green {
-        width: 8px;
-        height: 8px;
-        background-color: #10b981;
-        border-radius: 50%;
-        box-shadow: 0 0 8px #10b981;
-    }
+  /* ── Empty state ────────────────────────────────────────────────────── */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px 40px;
+    color: #94A3B8;
+  }
+  .empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+  }
+  .empty-state h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 8px;
+  }
+  .empty-state p {
+    font-size: 0.88rem;
+    color: #94A3B8;
+    margin-bottom: 28px;
+    line-height: 1.6;
+  }
+  .suggestion-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+  .suggestion-chip {
+    background: #ffffff;
+    border: 1px solid #E2E8F0;
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-size: 0.8rem;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .suggestion-chip:hover {
+    background: #EFF6FF;
+    border-color: #93C5FD;
+    color: #1D4ED8;
+  }
 
-    .dot-purple {
-        width: 8px;
-        height: 8px;
-        background-color: #a78bfa;
-        border-radius: 50%;
-        box-shadow: 0 0 8px #a78bfa;
-    }
+  /* ── Bottom composer wrapper ─────────────────────────────────────────── */
+  .composer-wrapper {
+    position: sticky;
+    bottom: 0;
+    background: #F8FAFC;
+    border-top: 1px solid #E2E8F0;
+    padding: 12px 0 16px;
+  }
 
-    /* Tabs UI */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: rgba(15, 17, 33, 0.8);
-        padding: 6px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.05);
-    }
+  /* Chat input override — make it look sleek */
+  [data-testid="stChatInput"] textarea {
+    border-radius: 12px !important;
+    border: 1.5px solid #E2E8F0 !important;
+    padding: 12px 52px 12px 48px !important;
+    font-size: 0.93rem !important;
+    background: #ffffff !important;
+    color: #0F172A !important;
+    min-height: 48px !important;
+    resize: none !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+    transition: border-color 0.2s !important;
+  }
+  [data-testid="stChatInput"] textarea:focus {
+    border-color: #2563EB !important;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.08) !important;
+    outline: none !important;
+  }
+  [data-testid="stChatInput"] button {
+    background: #2563EB !important;
+    border-radius: 8px !important;
+    color: white !important;
+  }
+  [data-testid="stChatInput"] button:hover {
+    background: #1D4ED8 !important;
+  }
 
-    .stTabs [data-baseweb="tab"] {
-        height: 44px;
-        white-space: pre;
-        border-radius: 8px;
-        color: #94a3b8;
-        font-weight: 600;
-        font-size: 0.9rem;
-        padding: 0 16px;
-        border: none;
-        transition: all 0.2s ease;
-    }
+  /* File uploader — minimal */
+  [data-testid="stFileUploader"] {
+    border: 1.5px dashed #CBD5E1 !important;
+    border-radius: 10px !important;
+    padding: 8px 12px !important;
+    background: #ffffff !important;
+    font-size: 0.8rem !important;
+  }
 
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
-        color: #ffffff !important;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
-    }
+  /* Source expander — subtle */
+  .streamlit-expanderHeader {
+    font-size: 0.78rem !important;
+    color: #94A3B8 !important;
+  }
 
-    /* Suggestion Chips */
-    .suggestion-chip-btn {
-        background: rgba(30, 34, 64, 0.6);
-        border: 1px solid rgba(167, 139, 250, 0.2);
-        border-radius: 12px;
-        padding: 0.6rem 1rem;
-        color: #cbd5e1;
-        font-size: 0.82rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-align: left;
-        width: 100%;
-        margin-bottom: 0.5rem;
-    }
+  /* Thinking spinner text */
+  [data-testid="stSpinner"] p {
+    font-size: 0.85rem !important;
+    color: #64748B !important;
+  }
 
-    .suggestion-chip-btn:hover {
-        background: rgba(99, 102, 241, 0.2);
-        border-color: #6366f1;
-        color: #ffffff;
-        transform: translateY(-1px);
-    }
-
-    /* Cards */
-    .glass-card {
-        background: rgba(18, 20, 39, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 1.2rem;
-        margin-bottom: 1rem;
-    }
-
-    /* Strategy Badges */
-    .strategy-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 700;
-        margin-bottom: 0.6rem;
-    }
-
-    .badge-docs {
-        background: rgba(16, 185, 129, 0.15);
-        color: #34d399;
-        border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-
-    .badge-web {
-        background: rgba(59, 130, 246, 0.15);
-        color: #60a5fa;
-        border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-
-    .badge-hybrid {
-        background: rgba(168, 85, 247, 0.15);
-        color: #c084fc;
-        border: 1px solid rgba(168, 85, 247, 0.3);
-    }
-
-    /* Source Items */
-    .source-box-doc {
-        background: rgba(16, 185, 129, 0.08);
-        border: 1px solid rgba(16, 185, 129, 0.2);
-        border-radius: 8px;
-        padding: 0.5rem 0.8rem;
-        margin-top: 0.4rem;
-        font-size: 0.82rem;
-        color: #6ee7b7;
-    }
-
-    .source-box-web {
-        background: rgba(59, 130, 246, 0.08);
-        border: 1px solid rgba(59, 130, 246, 0.2);
-        border-radius: 8px;
-        padding: 0.5rem 0.8rem;
-        margin-top: 0.4rem;
-        font-size: 0.82rem;
-        color: #93c5fd;
-    }
-
-    .source-box-web a {
-        color: #60a5fa;
-        text-decoration: underline;
-    }
-
-    /* Primary Button override */
-    .stButton > button {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        font-weight: 600;
-        padding: 0.6rem 1.2rem;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-    }
-
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-    }
-
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background: rgba(12, 14, 28, 0.95);
-        border-right: 1px solid rgba(255, 255, 255, 0.08);
-    }
+  /* Markdown inside chat bubbles */
+  .stChatMessage p { margin: 0 0 8px 0; }
+  .stChatMessage ul, .stChatMessage ol { padding-left: 20px; margin: 8px 0; }
+  .stChatMessage li { margin-bottom: 4px; }
+  .stChatMessage table {
+    font-size: 0.85rem;
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+  }
+  .stChatMessage th, .stChatMessage td {
+    padding: 8px 12px;
+    border: 1px solid #E2E8F0;
+    text-align: left;
+  }
+  .stChatMessage th { background: #F1F5F9; font-weight: 600; }
+  .stChatMessage code {
+    background: #F1F5F9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+  .stChatMessage pre {
+    background: #0F172A;
+    color: #e2e8f0;
+    padding: 14px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.82rem;
+  }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# HELPER FUNCTIONS
-# ─────────────────────────────────────────────
+# ── SMART SYSTEM PROMPT ───────────────────────────────────────────────────────
+SYSTEM_PROMPT = """You are an intelligent AI Research Assistant.
+
+Your job is to help users understand documents, research topics, and answer questions clearly.
+
+RESPONSE FORMAT RULES — follow these exactly:
+
+1. DEFINITION / "What is X" question:
+   Give a short 1–3 sentence definition, then a brief explanation. Use a simple flow if helpful.
+
+2. HOW / PROCESS question:
+   Use numbered steps. Keep each step short and clear.
+
+3. COMPARISON question:
+   Use a markdown table with clear columns.
+
+4. LIST / BENEFITS / ADVANTAGES question:
+   Use bullet points (•). Maximum 7 items.
+
+5. TUTORIAL / HOW TO BUILD question:
+   Use numbered steps with bold step titles.
+
+6. SUMMARY request:
+   Structure as: ## Summary, ## Key Points (bullets), ## In Simple Terms.
+
+7. COMPLEX RESEARCH question:
+   Structure as: ## Short Answer, ## Key Findings (numbered), ## Explanation, ## Conclusion.
+
+8. SIMPLE question (e.g. "What is Python?"):
+   Give a concise 2–4 sentence answer. Do NOT write a long essay.
+
+9. BEGINNER / EXPLAIN SIMPLY question:
+   Use plain language. Start with a simple analogy. Avoid jargon.
+
+10. CODE / TECHNICAL question:
+    Use code blocks. Give a brief explanation before the code.
+
+CRITICAL RULES:
+- Match response length to question complexity. Short question = short answer.
+- Do NOT include source URLs or citations unless the user explicitly asks for sources.
+- Do NOT expose backend technical details (Haystack, vector store, embeddings, etc.).
+- Do NOT use the same format for every response.
+- Think about the user's intent first, then choose the best format.
+- Be direct, clear, and helpful.
+"""
+
+
+# ── HELPERS ───────────────────────────────────────────────────────────────────
 def process_uploaded_file(uploaded_file) -> tuple[List, int]:
-    """Saves and indexes uploaded files."""
+    """Saves, chunks, and embeds uploaded document. Returns (chunks, count)."""
     suffix = Path(uploaded_file.name).suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(uploaded_file.getbuffer())
         tmp_path = Path(tmp.name)
-
     try:
         raw_docs = load_document(tmp_path)
         if not raw_docs:
             return [], 0
-
         for doc in raw_docs:
             doc.meta["filename"] = uploaded_file.name
             doc.meta["source"] = uploaded_file.name
-
         chunks = chunk_documents(raw_docs)
-        embedded_chunks = generate_document_embeddings(chunks)
-
-        return embedded_chunks, len(embedded_chunks)
+        embedded = generate_document_embeddings(chunks)
+        return embedded, len(embedded)
+    except Exception:
+        raise
     finally:
         tmp_path.unlink(missing_ok=True)
 
 
-def format_citations_html(doc_results: List[Dict], web_results: List[Dict]) -> str:
-    """Formats formatted citations."""
-    if not doc_results and not web_results:
-        return ""
+def build_agent_prompt(question: str, context: str) -> str:
+    """Builds the final LLM prompt with system instructions + context."""
+    return f"""{SYSTEM_PROMPT}
 
-    html = '<div style="margin-top:1rem; padding-top:0.8rem; border-top:1px dashed rgba(255,255,255,0.1);">'
-    html += '<b style="color:#a78bfa; font-size:0.88rem;">📌 Research Citations & Sources:</b>'
+---
 
-    if doc_results:
-        seen = set()
-        for d in doc_results:
-            fname = d.get("filename", "Document")
-            page = d.get("page", 1)
-            key = f"{fname}|{page}"
-            if key not in seen:
-                seen.add(key)
-                html += f'<div class="source-box-doc">📄 <b>{fname}</b> &nbsp;|&nbsp; Page {page}</div>'
+Retrieved Context (use this to answer accurately):
+{context}
 
-    if web_results:
-        seen_web = set()
-        for w in web_results:
-            title = w.get("title", "Web Page")
-            url = w.get("url", "")
-            if url and url not in seen_web:
-                seen_web.add(url)
-                html += f'<div class="source-box-web">🌐 <b>{title}</b> — <a href="{url}" target="_blank">{url}</a></div>'
-            elif title and title not in seen_web:
-                seen_web.add(title)
-                html += f'<div class="source-box-web">🌐 <b>{title}</b></div>'
+---
 
-    html += '</div>'
-    return html
+User Question: {question}
+
+Answer:"""
 
 
-# ─────────────────────────────────────────────
-# HEADER NAVBAR
-# ─────────────────────────────────────────────
-api_status_color = "dot-green" if st.session_state.api_key else "dot-purple"
-api_status_text = "Gemini Ready" if st.session_state.api_key else "API Key Needed"
-
-st.markdown(f"""
-<div class="top-navbar">
-    <div class="nav-brand">
-        <span style="font-size: 2.2rem;">🧠</span>
-        <div>
-            <h1 class="nav-title">RAG + Web AI Research Agent</h1>
-            <p class="nav-subtitle">Next-Gen Hybrid Research Assistant powered by Haystack AI & Gemini</p>
-        </div>
-    </div>
-    <div class="status-pill-group">
-        <div class="status-pill"><span class="{api_status_color}"></span> {api_status_text}</div>
-        <div class="status-pill">📁 {st.session_state.doc_count} Chunks Indexed</div>
-        <div class="status-pill">⚡ Haystack 2.x</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# SIDEBAR CONTROL CENTER
-# ─────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### ⚙️ Control Center")
-    st.markdown("---")
-
-    # Reasoning Mode Selector
-    st.markdown("**🧠 Agent Mode**")
-    mode_selection = st.radio(
-        "Mode:",
-        ["🤖 Autonomous AI Agent (Hybrid)", "📚 Strict Local Document RAG"],
-        index=0 if "Autonomous" in st.session_state.agent_mode else 1,
-        key="sidebar_agent_mode",
+def run_agent(question: str) -> str:
+    """Runs the research agent and returns only the answer text."""
+    agent = ResearchAgent(api_key=st.session_state.api_key)
+    result = agent.run(
+        question=question,
+        document_store=st.session_state.doc_store_manager.store,
+        top_k_docs=st.session_state.top_k_docs,
+        max_web_results=st.session_state.max_web_results,
     )
-    st.session_state.agent_mode = mode_selection
-
-    st.markdown("---")
-
-    # Fast Document Processing Widget
-    st.markdown("**📂 Quick Ingest**")
-    quick_files = st.file_uploader(
-        "Upload PDF, TXT, DOCX",
-        type=["pdf", "txt", "docx"],
-        accept_multiple_files=True,
-        key="quick_uploader",
-    )
-
-    if st.button("⚡ Process & Index", key="quick_process_btn"):
-        if not quick_files:
-            st.warning("Select files first.")
-        else:
-            total_chunks = 0
-            new_files = []
-            prog = st.progress(0)
-            status_lbl = st.empty()
-
-            for idx, f in enumerate(quick_files):
-                if f.name in st.session_state.indexed_files:
-                    continue
-                status_lbl.info(f"Embedding {f.name}...")
-                try:
-                    chunks, c_len = process_uploaded_file(f)
-                    if chunks:
-                        st.session_state.doc_store_manager.write_documents(chunks)
-                        total_chunks += c_len
-                        new_files.append(f.name)
-                        st.session_state.indexed_chunks_preview.extend(chunks[:3])
-                except Exception as ex:
-                    st.error(f"Error: {str(ex)}")
-                prog.progress((idx + 1) / len(quick_files))
-
-            prog.empty()
-            status_lbl.empty()
-
-            if new_files:
-                st.session_state.indexed_files.extend(new_files)
-                st.session_state.doc_count = st.session_state.doc_store_manager.count_documents()
-                st.session_state.chunk_count += total_chunks
-                st.success(f"Indexed {len(new_files)} file(s) ({total_chunks} chunks)")
-
-    st.markdown("---")
-    st.markdown("**🧹 Reset Options**")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🗑️ Clear Chat", key="clear_chat_side"):
-            st.session_state.messages = []
-            st.rerun()
-    with col2:
-        if st.button("♻️ Reset DB", key="reset_db_side"):
-            st.session_state.doc_store_manager = DocumentStoreManager()
-            st.session_state.doc_count = 0
-            st.session_state.chunk_count = 0
-            st.session_state.indexed_files = []
-            st.session_state.indexed_chunks_preview = []
-            st.rerun()
+    # Store sources in session for optional "show sources" trigger
+    st.session_state["_last_doc_results"] = result.get("doc_results", [])
+    st.session_state["_last_web_results"] = result.get("web_results", [])
+    return result.get("answer", "I couldn't generate a response. Please try again.")
 
 
-# ─────────────────────────────────────────────
-# NAVIGATION TABS (NEW UI STRUCTURE)
-# ─────────────────────────────────────────────
-tab_chat, tab_kb, tab_settings, tab_analytics = st.tabs([
-    "💬 AI Research Workspace",
-    "📚 Knowledge Base Hub",
-    "⚙️ Settings & Configuration",
-    "📊 System Analytics"
-])
-
-# =============================================================================
-# TAB 1: AI RESEARCH WORKSPACE
-# =============================================================================
-with tab_chat:
-    col_main, col_side = st.columns([3, 1])
-
-    with col_side:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### 💡 Prompt Starters")
-        st.markdown("Click any chip to insert into research prompt:")
-
-        starters = [
-            "Summarize the key findings from my uploaded documents.",
-            "Search the web for recent developments in AI agents.",
-            "Compare local document technical details with live web news.",
-            "What are the main risks or limitations discussed in the text?",
-        ]
-
-        for s in starters:
-            if st.button(f"✨ {s}", key=f"starter_{hash(s)}"):
-                st.session_state.pending_prompt = s
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### ⚡ Active Mode")
-        st.info(f"Current: **{st.session_state.agent_mode}**")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_main:
-        # Display Message Stream
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]):
-                if msg.get("badge_html"):
-                    st.markdown(msg["badge_html"], unsafe_allow_html=True)
-                st.markdown(msg["content"], unsafe_allow_html=True)
-                if msg.get("citations_html"):
-                    st.markdown(msg["citations_html"], unsafe_allow_html=True)
-
-        # Check for preset prompt starter
-        default_val = ""
-        if "pending_prompt" in st.session_state and st.session_state.pending_prompt:
-            default_val = st.session_state.pending_prompt
-            del st.session_state.pending_prompt
-
-        # Chat Input
-        if user_query := st.chat_input("Ask any complex research question...", key="chat_input"):
-
-            with st.chat_message("user"):
-                st.markdown(user_query)
-            st.session_state.messages.append({"role": "user", "content": user_query})
-
-            if not st.session_state.api_key:
-                err = "⚠️ **Gemini API Key missing.** Configure your key in the **Settings** tab."
-                with st.chat_message("assistant"):
-                    st.error(err)
-                st.session_state.messages.append({"role": "assistant", "content": err})
-
-            else:
-                with st.chat_message("assistant"):
-                    is_agent = "Autonomous" in st.session_state.agent_mode
-
-                    if is_agent:
-                        with st.spinner("🤖 AI Agent deliberating (routing between vector DB & live web)..."):
-                            try:
-                                agent = ResearchAgent(api_key=st.session_state.api_key)
-                                res = agent.run(
-                                    question=user_query,
-                                    document_store=st.session_state.doc_store_manager.store,
-                                    top_k_docs=st.session_state.top_k_docs,
-                                    max_web_results=st.session_state.max_web_results,
-                                )
-
-                                answer = res["answer"]
-                                strategy = res["strategy"]
-                                doc_res = res.get("doc_results", [])
-                                web_res = res.get("web_results", [])
-
-                                badge_map = {
-                                    "documents": '<span class="strategy-badge badge-docs">📄 Strategy: Local Documents</span>',
-                                    "web": '<span class="strategy-badge badge-web">🌐 Strategy: Live Web Search</span>',
-                                    "hybrid": '<span class="strategy-badge badge-hybrid">🔀 Strategy: Hybrid (Docs + Web)</span>',
-                                }
-                                badge_html = badge_map.get(strategy, "")
-                                citations_html = format_citations_html(doc_res, web_res)
-
-                                if badge_html:
-                                    st.markdown(badge_html, unsafe_allow_html=True)
-                                st.markdown(answer)
-                                if citations_html:
-                                    st.markdown(citations_html, unsafe_allow_html=True)
-
-                                st.session_state.messages.append({
-                                    "role": "assistant",
-                                    "content": answer,
-                                    "badge_html": badge_html,
-                                    "citations_html": citations_html,
-                                })
-
-                            except Exception as e:
-                                err_msg = f"❌ **Error during agent execution:** {str(e)}"
-                                st.error(err_msg)
-                                st.session_state.messages.append({"role": "assistant", "content": err_msg})
-
-                    else:
-                        # Document RAG Only Mode
-                        if st.session_state.doc_store_manager.count_documents() == 0:
-                            warn_msg = "📂 **No documents indexed yet.** Upload files in **Knowledge Base Hub**."
-                            st.warning(warn_msg)
-                            st.session_state.messages.append({"role": "assistant", "content": warn_msg})
-                        else:
-                            with st.spinner("📚 Querying local vector store..."):
-                                try:
-                                    res = run_rag_pipeline(
-                                        question=user_query,
-                                        document_store=st.session_state.doc_store_manager.store,
-                                        top_k=st.session_state.top_k_docs,
-                                        api_key=st.session_state.api_key,
-                                    )
-                                    answer = res["answer"]
-                                    docs = res["documents"]
-                                    doc_results = [
-                                        {"filename": d.meta.get("filename", "Doc"), "page": d.meta.get("page_number", 1)}
-                                        for d in docs
-                                    ]
-                                    citations_html = format_citations_html(doc_results, [])
-
-                                    badge_html = '<span class="strategy-badge badge-docs">📄 Strategy: Local Document RAG</span>'
-                                    st.markdown(badge_html, unsafe_allow_html=True)
-                                    st.markdown(answer)
-                                    if citations_html:
-                                        st.markdown(citations_html, unsafe_allow_html=True)
-
-                                    st.session_state.messages.append({
-                                        "role": "assistant",
-                                        "content": answer,
-                                        "badge_html": badge_html,
-                                        "citations_html": citations_html,
-                                    })
-                                except Exception as e:
-                                    err_msg = f"❌ **RAG Error:** {str(e)}"
-                                    st.error(err_msg)
-                                    st.session_state.messages.append({"role": "assistant", "content": err_msg})
+def format_sources_markdown(doc_results: List[Dict], web_results: List[Dict]) -> str:
+    """Formats sources as clean markdown (only shown on explicit user request)."""
+    lines = ["**Sources used:**\n"]
+    seen_docs, seen_urls = set(), set()
+    for d in doc_results:
+        fname = d.get("filename", "Document")
+        page = d.get("page", 1)
+        key = f"{fname}|{page}"
+        if key not in seen_docs:
+            seen_docs.add(key)
+            lines.append(f"📄 **{fname}** — page {page}")
+    for w in web_results:
+        url = w.get("url", "")
+        title = w.get("title", "Web page")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            lines.append(f"🌐 [{title}]({url})")
+        elif title and title not in seen_urls:
+            seen_urls.add(title)
+            lines.append(f"🌐 {title}")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
-# =============================================================================
-# TAB 2: KNOWLEDGE BASE HUB
-# =============================================================================
-with tab_kb:
-    st.markdown("### 📚 Knowledge Base & Ingestion Inspector")
-    st.write("Manage your uploaded files, view indexed chunk counts, and inspect raw vector snippets.")
-
-    k_col1, k_col2 = st.columns([1, 1])
-
-    with k_col1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### 📥 Document Upload Dropzone")
-        kb_files = st.file_uploader(
-            "Batch upload PDF, TXT, or DOCX documents",
-            type=["pdf", "txt", "docx"],
-            accept_multiple_files=True,
-            key="kb_dropzone",
-        )
-
-        if st.button("🚀 Process Knowledge Base", key="kb_process_btn"):
-            if not kb_files:
-                st.warning("Please attach files to process.")
-            else:
-                total_c = 0
-                added_f = []
-                p_bar = st.progress(0)
-
-                for idx, kf in enumerate(kb_files):
-                    if kf.name in st.session_state.indexed_files:
-                        continue
-                    chunks, c_cnt = process_uploaded_file(kf)
-                    if chunks:
-                        st.session_state.doc_store_manager.write_documents(chunks)
-                        total_c += c_cnt
-                        added_f.append(kf.name)
-                        st.session_state.indexed_chunks_preview.extend(chunks[:3])
-                    p_bar.progress((idx + 1) / len(kb_files))
-
-                p_bar.empty()
-                if added_f:
-                    st.session_state.indexed_files.extend(added_f)
-                    st.session_state.doc_count = st.session_state.doc_store_manager.count_documents()
-                    st.session_state.chunk_count += total_c
-                    st.success(f"Successfully indexed {len(added_f)} file(s) ({total_c} vector chunks).")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with k_col2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### 📄 Indexed Document List")
-        if st.session_state.indexed_files:
-            for fname in st.session_state.indexed_files:
-                ext = Path(fname).suffix.upper().lstrip(".")
-                icon = "📕" if ext == "PDF" else "📝" if ext == "TXT" else "📘"
-                st.markdown(f"- {icon} **`{fname}`** &nbsp; *(Status: Indexed in InMemoryStore)*")
-        else:
-            st.info("No files in knowledge base.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("#### 🔍 Chunk Preview Inspector")
-    if st.session_state.indexed_chunks_preview:
-        for i, doc in enumerate(st.session_state.indexed_chunks_preview[:6]):
-            with st.expander(f"Chunk #{i+1} — {doc.meta.get('filename', 'Doc')} (Page {doc.meta.get('page_number', 1)})"):
-                st.code(doc.content, language="markdown")
-    else:
-        st.info("Upload documents to inspect vector chunks here.")
+def user_wants_sources(question: str) -> bool:
+    """Detects if user is explicitly asking to see sources/references."""
+    q = question.lower()
+    return any(kw in q for kw in [
+        "show me the sources", "show sources", "list sources",
+        "where did you get", "what are your sources", "cite", "references",
+        "show references", "show links", "give me the links",
+    ])
 
 
-# =============================================================================
-# TAB 3: SETTINGS & CONFIGURATION
-# =============================================================================
-with tab_settings:
-    st.markdown("### ⚙️ System Settings & Model Configuration")
-
-    s_col1, s_col2 = st.columns(2)
-
-    with s_col1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### 🔑 API Keys")
-        g_key = st.text_input(
-            "Gemini API Key",
-            value=st.session_state.api_key,
-            type="password",
-            help="Get free key at https://aistudio.google.com",
-            key="settings_gkey",
-        )
-        if g_key != st.session_state.api_key:
-            st.session_state.api_key = g_key
-            st.success("Updated Gemini API Key!")
-
-        t_key = st.text_input(
-            "Tavily Search API Key (Optional)",
-            value=st.session_state.tavily_key,
-            type="password",
-            help="Optional. If omitted, DuckDuckGo search is used automatically.",
-            key="settings_tkey",
-        )
-        if t_key != st.session_state.tavily_key:
-            st.session_state.tavily_key = t_key
-            st.success("Updated Tavily API Key!")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with s_col2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("#### 🎛️ Agent & Retrieval Hyperparameters")
-        st.session_state.top_k_docs = st.slider(
-            "Vector Retrieval Top-K (Document Chunks)",
-            min_value=1,
-            max_value=10,
-            value=st.session_state.top_k_docs,
-            help="Number of document chunks to retrieve per search.",
-            key="top_k_slider",
-        )
-
-        st.session_state.max_web_results = st.slider(
-            "Max Web Search Results",
-            min_value=1,
-            max_value=10,
-            value=st.session_state.max_web_results,
-            help="Number of web pages to retrieve per query.",
-            key="web_results_slider",
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-
-
-# =============================================================================
-# TAB 4: SYSTEM ANALYTICS
-# =============================================================================
-with tab_analytics:
-    st.markdown("### 📊 System Architecture & Metrics")
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Indexed Documents", len(st.session_state.indexed_files))
-    m2.metric("Total Vector Chunks", st.session_state.doc_count)
-    m3.metric("Chat Messages", len(st.session_state.messages))
-    m4.metric("Embedding Model", "MiniLM-L6-v2")
-
-    st.markdown("---")
-    st.markdown("#### 🏗️ Pipeline Flow Architecture")
+# ── HEADER ────────────────────────────────────────────────────────────────────
+col_header, col_clear = st.columns([5, 1])
+with col_header:
     st.markdown("""
-    ```mermaid
-    graph TD
-        User[User Question] --> Agent{Research Agent Router}
-        Agent -->|Document Intent / Hybrid| DocTool[Document Retrieval Tool]
-        Agent -->|Web Intent / Hybrid| WebTool[Web Search Tool]
-        
-        DocTool --> DocStore[(InMemory Vector Store)]
-        WebTool --> WebSearch[Tavily / DuckDuckGo]
-        
-        DocStore --> Synthesis[Context Aggregator]
-        WebSearch --> Synthesis
-        
-        Synthesis --> Gemini[Gemini LLM Component]
-        Gemini --> Response[Final Answer + Sources UI]
-    ```
-    """)
+    <div style="padding: 18px 0 8px 0; display:flex; align-items:center; gap:10px;">
+      <div style="width:38px;height:38px;background:linear-gradient(135deg,#2563EB,#14B8A6);
+                  border-radius:10px;display:flex;align-items:center;justify-content:center;
+                  font-size:20px;flex-shrink:0;">🧠</div>
+      <div>
+        <div style="font-size:1rem;font-weight:700;color:#0F172A;line-height:1.2;">AI Research Assistant</div>
+        <div style="font-size:0.75rem;color:#64748B;">Ask questions, explore documents, get intelligent answers.</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_clear:
+    st.markdown("<div style='padding-top:20px;'>", unsafe_allow_html=True)
+    if st.button("✕ Clear", key="clear_chat_btn", help="Clear conversation"):
+        st.session_state.messages = []
+        st.session_state.upload_status = None
+        st.session_state.upload_filename = ""
+        st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown("<hr style='margin:0 0 8px 0; border:none; border-top:1px solid #E2E8F0;'>",
+            unsafe_allow_html=True)
+
+
+# ── DOCUMENT UPLOAD (above chat, compact) ─────────────────────────────────────
+with st.expander("📎 Attach a document (PDF, TXT, DOCX)", expanded=False):
+    uploaded_file = st.file_uploader(
+        "Upload document",
+        type=["pdf", "txt", "docx"],
+        accept_multiple_files=False,
+        key="doc_uploader",
+        label_visibility="collapsed",
+    )
+    if uploaded_file and uploaded_file.name not in st.session_state.indexed_files:
+        st.session_state.upload_status = "processing"
+        st.session_state.upload_filename = uploaded_file.name
+        with st.spinner(f"Processing {uploaded_file.name}..."):
+            try:
+                chunks, count = process_uploaded_file(uploaded_file)
+                if chunks:
+                    st.session_state.doc_store_manager.write_documents(chunks)
+                    st.session_state.indexed_files.append(uploaded_file.name)
+                    st.session_state.upload_status = "ready"
+                else:
+                    st.session_state.upload_status = "error"
+            except Exception as e:
+                logger.error(f"Document processing error: {e}")
+                st.session_state.upload_status = "error"
+
+# Upload status pill
+if st.session_state.upload_status == "ready":
+    st.markdown(
+        f'<div class="upload-pill">✓ <b>{st.session_state.upload_filename}</b> is ready</div>',
+        unsafe_allow_html=True,
+    )
+elif st.session_state.upload_status == "processing":
+    st.markdown(
+        f'<div class="upload-pill upload-pill-processing">⏳ Processing <b>{st.session_state.upload_filename}</b>…</div>',
+        unsafe_allow_html=True,
+    )
+elif st.session_state.upload_status == "error":
+    st.markdown(
+        f'<div class="upload-pill upload-pill-error">⚠ Could not process <b>{st.session_state.upload_filename}</b>. Try another file.</div>',
+        unsafe_allow_html=True,
+    )
+
+# Already-indexed files list (compact)
+if st.session_state.indexed_files:
+    files_txt = " · ".join(
+        f"📄 {f}" for f in st.session_state.indexed_files
+    )
+    st.markdown(
+        f'<div style="font-size:0.75rem;color:#94A3B8;padding:2px 0 6px 2px;">{files_txt}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── EMPTY STATE ───────────────────────────────────────────────────────────────
+SUGGESTIONS = [
+    "What is RAG?",
+    "How does RAG work?",
+    "RAG vs fine-tuning",
+    "Explain embeddings simply",
+]
+
+if not st.session_state.messages:
+    st.markdown("""
+    <div class="empty-state">
+      <div class="empty-state-icon">🧠</div>
+      <h2>AI Research Assistant</h2>
+      <p>Ask questions about your documents,<br>AI, technology, or any topic.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Suggestion chips using Streamlit buttons styled as chips
+    cols = st.columns(len(SUGGESTIONS))
+    for i, suggestion in enumerate(SUGGESTIONS):
+        with cols[i]:
+            if st.button(suggestion, key=f"sug_{i}", use_container_width=True):
+                st.session_state["_pending_suggestion"] = suggestion
+                st.rerun()
+
+
+# ── CHAT HISTORY ──────────────────────────────────────────────────────────────
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "user" else "🧠"):
+        st.markdown(msg["content"])
+
+
+# ── CHAT INPUT ────────────────────────────────────────────────────────────────
+# Handle suggestion chip clicks
+pending = st.session_state.pop("_pending_suggestion", None)
+user_input = st.chat_input("Ask anything…", key="main_chat_input") or pending
+
+if user_input:
+    # ── Show user message
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(user_input)
+    st.session_state.messages.append({"role": "user", "content": user_input})
+
+    # ── Guard: API key required
+    if not st.session_state.api_key:
+        err = "⚠️ No API key configured. Please set your `GEMINI_API_KEY` in `src/config.py` or as an environment variable."
+        with st.chat_message("assistant", avatar="🧠"):
+            st.warning(err)
+        st.session_state.messages.append({"role": "assistant", "content": err})
+        st.stop()
+
+    # ── Check if user is explicitly asking for sources
+    if user_wants_sources(user_input):
+        doc_res = st.session_state.get("_last_doc_results", [])
+        web_res = st.session_state.get("_last_web_results", [])
+        sources_md = format_sources_markdown(doc_res, web_res)
+        reply = sources_md if sources_md else "I don't have any source information from the previous answer."
+        with st.chat_message("assistant", avatar="🧠"):
+            st.markdown(reply)
+        st.session_state.messages.append({"role": "assistant", "content": reply})
+        st.stop()
+
+    # ── Run the agent
+    with st.chat_message("assistant", avatar="🧠"):
+        with st.spinner("Thinking…"):
+            try:
+                answer = run_agent(user_input)
+            except Exception as e:
+                logger.error(f"Agent error: {e}", exc_info=True)
+                answer = "Something went wrong while generating the answer. Please try again."
+        st.markdown(answer)
+
+    st.session_state.messages.append({"role": "assistant", "content": answer})

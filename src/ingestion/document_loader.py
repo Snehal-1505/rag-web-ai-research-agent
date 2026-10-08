@@ -9,7 +9,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Union
 
-import pymupdf as fitz  # PyMuPDF for PDF extraction - use pymupdf instead of fitz directly
+try:
+    import pymupdf as fitz  # PyMuPDF modern import name
+except ImportError:
+    import fitz  # PyMuPDF legacy import name
 import docx  # python-docx for DOCX extraction
 from haystack import Document
 

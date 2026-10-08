@@ -16,9 +16,9 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 # Chunking Defaults
-SPLIT_BY = "sentence"
-SPLIT_LENGTH = 5
-SPLIT_OVERLAP = 1
+SPLIT_BY = "word"
+SPLIT_LENGTH = 150
+SPLIT_OVERLAP = 20
 
 # Document Storage Directories
 DATA_DIR = BASE_DIR / "data"

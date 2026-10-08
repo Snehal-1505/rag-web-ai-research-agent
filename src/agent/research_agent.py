@@ -48,6 +48,7 @@ class ResearchAgent:
         document_store,
         top_k_docs: int = 5,
         max_web_results: int = 5,
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Executes the agent workflow:
@@ -94,19 +95,27 @@ class ResearchAgent:
 
         full_context = "\n\n".join(context_parts) if context_parts else "No background search context available."
 
-        # Prompt construction
-        prompt = f"""You are an expert AI Research Assistant with access to local document search and web search.
+        # Prompt construction — uses system instructions passed from caller
+        system_instr = kwargs.get("system_prompt", """You are an intelligent AI Research Assistant.
 
-User Question: {question}
+Answer questions clearly based on the retrieved context below. Choose the best format automatically:
+- Short paragraph for simple questions
+- Numbered steps for procedures / how-to questions
+- Bullet list for advantages, lists, features
+- Comparison table for X vs Y questions
+- Structured sections (## Short Answer, ## Key Findings, ## Explanation) for complex research
+- Simple plain language for beginner/explain-simply questions
+- Code blocks for programming questions
 
-Retrieved Research Context:
+Keep answers concise. Do not include source URLs or citations unless explicitly asked.
+Do not mention Haystack, vector stores, embeddings, or other backend details.""")
+
+        prompt = f"""{system_instr}
+
+Retrieved Context:
 {full_context}
 
-Instructions:
-1. Provide a clear, detailed, and accurate answer to the user's question.
-2. Rely primarily on the provided research context above.
-3. Explicitly cite your sources using document filenames or web site titles/urls when referring to facts.
-4. If context from both documents and web search were used, highlight key takeaways from each.
+User Question: {question}
 
 Answer:"""
 
