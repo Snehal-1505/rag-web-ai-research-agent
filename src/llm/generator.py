@@ -20,7 +20,7 @@ class GeminiGenerator:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.0-flash",
+        model_name: str = "gemini-3.8-flash",
     ):
         self.api_key = api_key if api_key is not None else (GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", ""))
         self.model_name = model_name
