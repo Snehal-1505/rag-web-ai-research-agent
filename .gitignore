@@ -1,12 +1,31 @@
+# Environment
 .env
 venv/
+.venv/
+*.egg-info/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Testing
 .pytest_cache/
 .streamlit/
+
+# ── Persistent data (never commit) ──────────────────
+data/chroma_db/
+data/chat_history.db
+data/chat_history.db-shm
+data/chat_history.db-wal
+
+# Uploads — keep folder but not contents
 data/uploads/*
 !data/uploads/.gitkeep
+
 data/documents/*
 !data/documents/.gitkeep
+
+# Temp ChromaDB test folder
+test_chroma/

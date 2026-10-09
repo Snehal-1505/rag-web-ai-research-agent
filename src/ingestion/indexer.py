@@ -4,7 +4,7 @@ Document and Text Embedder Module for Haystack AI RAG Application.
 Uses local HuggingFace embedding models via SentenceTransformers.
 Default model: sentence-transformers/all-MiniLM-L6-v2
 """
-from typing import List
+from typing import List, Optional
 from haystack import Document
 from haystack_integrations.components.embedders.sentence_transformers import (
     SentenceTransformersDocumentEmbedder,
@@ -34,6 +34,7 @@ def get_text_embedder(model_name: str = EMBEDDING_MODEL_NAME) -> SentenceTransfo
 def generate_document_embeddings(
     documents: List[Document],
     model_name: str = EMBEDDING_MODEL_NAME,
+    file_hash: Optional[str] = None,
 ) -> List[Document]:
     """
     Generates vector embeddings for a list of Haystack Document objects.
@@ -41,12 +42,20 @@ def generate_document_embeddings(
     Args:
         documents: List of Haystack Document objects.
         model_name: Hugging Face model identifier.
+        file_hash: Optional SHA-256 hash to tag documents for dedup tracking.
 
     Returns:
         List[Document]: Documents enriched with vector embeddings in doc.embedding.
     """
     if not documents:
         return []
+
+    # Optionally tag each document with file_hash for ChromaDB dedup
+    if file_hash:
+        for doc in documents:
+            if doc.meta is None:
+                doc.meta = {}
+            doc.meta["file_hash"] = file_hash
 
     embedder = get_document_embedder(model_name=model_name)
     result = embedder.run(documents=documents)

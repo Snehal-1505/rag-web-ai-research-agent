@@ -1,12 +1,33 @@
-haystack-ai>=2.0.0
+# Core framework
+haystack-ai>=3.0.0
 sentence-transformers-haystack
-nltk
-streamlit
+sentence-transformers
+
+# Persistent vector store
+chromadb>=1.5.0
+
+# LLM
+google-genai
+
+# Document parsing
 pymupdf
 python-docx
-sentence-transformers
-python-dotenv
+
+# NLP utilities
+nltk
+
+# Web search
 tavily-python
 duckduckgo-search
-google-genai
+
+# UI
+streamlit
+
+# Configuration
+python-dotenv
+
+# Testing
 pytest
+
+# Utilities
+numpy

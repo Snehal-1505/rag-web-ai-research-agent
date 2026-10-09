@@ -25,6 +25,11 @@ DATA_DIR = BASE_DIR / "data"
 DOCUMENTS_DIR = DATA_DIR / "documents"
 UPLOADS_DIR = DATA_DIR / "uploads"
 
+# Persistent Storage
+CHROMA_DB_DIR = DATA_DIR / "chroma_db"       # ChromaDB vector store
+SQLITE_DB_PATH = DATA_DIR / "chat_history.db" # SQLite chat history
+
 # Ensure directories exist
 DOCUMENTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+CHROMA_DB_DIR.mkdir(parents=True, exist_ok=True)

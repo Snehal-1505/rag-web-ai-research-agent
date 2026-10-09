@@ -1,6 +1,7 @@
 """
 Agent Tools Module
 Defines tools for document retrieval and web search to be used by the Haystack AI Agent.
+Supports both InMemoryDocumentStore (legacy) and ChromaDocumentStoreManager (persistent).
 """
 from typing import List, Optional, Dict, Any
 from haystack import Document
@@ -14,22 +15,32 @@ from src.web.search import perform_web_search
 def document_search_func(query: str, document_store, top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Searches the indexed local documents for relevant context using semantic vector retrieval.
+    Automatically detects whether store is InMemory or ChromaDB and routes accordingly.
 
     Args:
         query: The search query string.
-        document_store: The Haystack InMemoryDocumentStore instance containing documents.
+        document_store: InMemoryDocumentStore OR ChromaDocumentStoreManager instance.
         top_k: Number of relevant document chunks to retrieve.
 
     Returns:
         List of dictionaries with document content and metadata.
     """
-    if not document_store or document_store.count_documents() == 0:
+    if document_store is None:
         return []
 
     try:
+        # ── ChromaDocumentStoreManager path ──────────────────────────────────
+        if hasattr(document_store, "search_documents"):
+            if document_store.count_documents() == 0:
+                return []
+            return document_store.search_documents(query=query, top_k=top_k)
+
+        # ── Legacy InMemoryDocumentStore path ─────────────────────────────────
+        if document_store.count_documents() == 0:
+            return []
+
         embedder = get_text_embedder()
         query_vector = embedder.run(text=query)["embedding"]
-
         retriever = InMemoryEmbeddingRetriever(document_store=document_store, top_k=top_k)
         retrieved_docs = retriever.run(query_embedding=query_vector)["documents"]
 
@@ -43,8 +54,11 @@ def document_search_func(query: str, document_store, top_k: int = 5) -> List[Dic
                 "score": doc.score if hasattr(doc, "score") else 0.0,
             })
         return results
+
     except Exception as e:
-        return [{"error": f"Document search error: {str(e)}"}]
+        import logging
+        logging.getLogger(__name__).error(f"Document search error: {e}", exc_info=True)
+        return []
 
 
 def web_search_func(query: str, max_results: int = 5) -> List[Dict[str, Any]]:
