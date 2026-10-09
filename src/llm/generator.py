@@ -20,7 +20,7 @@ class GeminiGenerator:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-1.5-flash",
+        model_name: str = "gemini-2.0-flash",
     ):
         self.api_key = api_key if api_key is not None else (GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", ""))
         self.model_name = model_name
@@ -52,14 +52,16 @@ class GeminiGenerator:
 
         try:
             if not self._client:
-                self._client = genai.Client(api_key=api_key)
+                self._client = genai.Client(api_key=self.api_key)
 
             response = self._client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
             )
-            
+
             answer_text = response.text if (response and response.text) else "No response generated."
             return {"replies": [answer_text]}
         except Exception as e:
-            return {"replies": [f"Error generating response from Gemini API: {str(e)}"]}
+            import logging
+            logging.getLogger(__name__).error(f"Gemini API error: {e}", exc_info=True)
+            return {"replies": ["Something went wrong while generating the answer. Please try again."]}
