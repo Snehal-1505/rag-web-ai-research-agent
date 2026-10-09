@@ -1,33 +1,33 @@
-# Core framework
-haystack-ai>=3.0.0
-sentence-transformers-haystack
-sentence-transformers
+# ── Core framework ────────────────────────────────────────────────────────────
+haystack-ai==3.3.0
+sentence-transformers-haystack==0.2.0
+sentence-transformers==6.1.0
 
-# Persistent vector store
-chromadb>=1.5.0
+# ── Persistent vector store ───────────────────────────────────────────────────
+chromadb==1.5.0
 
-# LLM
-google-genai
+# ── LLM ───────────────────────────────────────────────────────────────────────
+google-genai==2.24.0
 
-# Document parsing
-pymupdf
-python-docx
+# ── Document parsing ──────────────────────────────────────────────────────────
+pymupdf==1.28.2
+python-docx==1.2.0
 
-# NLP utilities
-nltk
+# ── NLP utilities ─────────────────────────────────────────────────────────────
+nltk==3.8.1
 
-# Web search
-tavily-python
-duckduckgo-search
+# ── Web search ────────────────────────────────────────────────────────────────
+tavily-python==0.8.5
+duckduckgo-search==8.1.1
 
-# UI
-streamlit
+# ── UI ────────────────────────────────────────────────────────────────────────
+streamlit==1.54.0
 
-# Configuration
-python-dotenv
+# ── Configuration ─────────────────────────────────────────────────────────────
+python-dotenv==1.1.0
 
-# Testing
+# ── Numerics ─────────────────────────────────────────────────────────────────
+numpy==1.26.4
+
+# ── Testing ───────────────────────────────────────────────────────────────────
 pytest
-
-# Utilities
-numpy

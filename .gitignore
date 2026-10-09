@@ -12,7 +12,9 @@ __pycache__/
 
 # Testing
 .pytest_cache/
-.streamlit/
+.streamlit/secrets.toml
+!.streamlit/config.toml
+!.streamlit/secrets.toml.example
 
 # ── Persistent data (never commit) ──────────────────
 data/chroma_db/

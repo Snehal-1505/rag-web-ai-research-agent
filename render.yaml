@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: rag-web-ai-research-agent
+    env: python
+    buildCommand: pip install torch --extra-index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
+    startCommand: python startup.py && streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATA_DIR
+        value: /var/data
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+    disk:
+      name: rag-persistent-data
+      mountPath: /var/data
+      sizeGB: 1
