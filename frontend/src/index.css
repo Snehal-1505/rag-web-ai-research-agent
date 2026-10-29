@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom subtle scrollbars matching Loomi aesthetic */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(119, 116, 109, 0.2);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(119, 116, 109, 0.4);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(158, 154, 145, 0.25);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(158, 154, 145, 0.45);
+  }
+}
+
+/* Editorial prose styling for Markdown */
+.prose-loomi {
+  line-height: 1.7;
+}
+
+.prose-loomi p {
+  margin-top: 0.65em;
+  margin-bottom: 0.65em;
+}
+
+.prose-loomi h1, .prose-loomi h2, .prose-loomi h3 {
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+.prose-loomi h1 { font-size: 1.5rem; }
+.prose-loomi h2 { font-size: 1.25rem; }
+.prose-loomi h3 { font-size: 1.1rem; }
+
+.prose-loomi ul, .prose-loomi ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.4em;
+}
+
+.prose-loomi li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.prose-loomi code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.86em;
+  padding: 0.15em 0.35em;
+  border-radius: 0.25rem;
+}
+
+.prose-loomi pre {
+  margin-top: 0.85em;
+  margin-bottom: 0.85em;
+  border-radius: 0.6rem;
+  overflow-x: auto;
+}
+
+.prose-loomi table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+
+.prose-loomi th, .prose-loomi td {
+  padding: 0.6em 0.8em;
+  border: 1px solid rgba(119, 116, 109, 0.2);
+  text-align: left;
+}
+
+.dark .prose-loomi th, .dark .prose-loomi td {
+  border-color: rgba(158, 154, 145, 0.2);
+}
+
+.prose-loomi th {
+  background: rgba(239, 229, 216, 0.4);
+}
+
+.dark .prose-loomi th {
+  background: rgba(37, 40, 34, 0.6);
+}

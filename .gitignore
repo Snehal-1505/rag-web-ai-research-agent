@@ -3,6 +3,9 @@
 venv/
 .venv/
 *.egg-info/
+node_modules/
+frontend/node_modules/
+npm-debug.log*
 
 # Python cache
 __pycache__/
