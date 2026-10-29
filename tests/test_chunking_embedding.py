@@ -16,7 +16,7 @@ def test_chunk_documents():
         "You can integrate local models like sentence-transformers seamlessly. "
         "Agents can use tools to route user questions dynamically. "
         "Retrieval-augmented generation improves answer precision significantly. "
-        "Streamlit provides a clean user interface for web applications."
+        "Loomi AI provides a clean React and FastAPI user interface for web research."
     )
     doc = Document(
         content=long_text,

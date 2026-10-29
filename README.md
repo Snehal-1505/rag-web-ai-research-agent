@@ -19,8 +19,8 @@
 - **Persistent Local Document RAG**: PDF, TXT, and DOCX ingestion with ChromaDB vector storage and SHA-256 deduplication.
 - **Autonomous Web Research**: Real-time web intelligence via Tavily API with zero-cost DuckDuckGo fallback.
 - **Hybrid Intent Router**: Dynamically routes between local knowledge and the live web, synthesizing authoritative answers with interactive citation cards.
-- **Modern Full-Stack Architecture**: React 18, TypeScript, Vite, Tailwind CSS, Lucide icons, and Framer Motion powered by a high-performance FastAPI adapter backend.
-- **Dual UI Support**: Enjoy the modern **Loomi AI React Workspace** on `http://localhost:8000` (or `http://localhost:5173` in dev mode) or run the classic **Streamlit UI** anytime via `streamlit run app.py`.
+- **Modern Full-Stack Architecture**: React 18, TypeScript, Vite, Tailwind CSS, Lucide icons, and Framer Motion powered by a high-performance FastAPI backend.
+- **Unified Workspace Experience**: Clean, fast, and responsive workspace running on `http://localhost:8000` (production) or `http://localhost:5173` (Vite dev).
 
 ---
 
@@ -130,13 +130,6 @@ python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 npm --prefix frontend run dev
 ```
 Open your browser to: **`http://localhost:5173`** (API requests are automatically proxied to port 8000).
-
-### Option C: Classic Streamlit Application (Preserved)
-The original Streamlit interface remains 100% functional and intact:
-```bash
-streamlit run app.py
-```
-Open your browser to: **`http://localhost:8501`**
 
 ---
 

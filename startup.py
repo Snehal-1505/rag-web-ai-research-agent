@@ -1,5 +1,5 @@
 """
-startup.py — Fast pre-flight checks run before Streamlit starts on Render.
+startup.py — Fast pre-flight checks run before Loomi AI server starts on Render.
 Ensures data directories and NLTK tokenizers exist in <2 seconds.
 """
 import os
@@ -39,4 +39,4 @@ if __name__ == "__main__":
     log.info("=== RAG App Pre-flight Startup ===")
     verify_data_dirs()
     download_nltk()
-    log.info("=== Pre-flight ready — starting Streamlit ===")
+    log.info("=== Pre-flight ready — starting Loomi AI server ===")

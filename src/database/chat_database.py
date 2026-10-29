@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class ChatDatabase:
     """
     Manages all SQLite operations for chat history and document tracking.
-    Thread-safe: creates a new connection per operation (safe for Streamlit reruns).
+    Thread-safe: creates a new connection per operation (safe for concurrent requests).
     """
 
     def __init__(self, db_path: Path):
