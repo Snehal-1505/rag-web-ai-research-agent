@@ -130,3 +130,86 @@ Answer:"""
             "doc_results": doc_results,
             "web_results": web_results,
         }
+
+    def run_stream(
+        self,
+        question: str,
+        document_store,
+        top_k_docs: int = 5,
+        max_web_results: int = 5,
+        **kwargs,
+    ):
+        """
+        Executes the agent workflow with real streaming output.
+        Yields dictionaries with event types:
+          - 'status': Updates research phase (searching, generating)
+          - 'sources': Emits retrieved documents and web sources
+          - 'delta': Emits incremental answer text tokens
+          - 'done': Indicates stream completion
+        """
+        has_docs = document_store is not None and document_store.count_documents() > 0
+        strategy = self.determine_search_strategy(question, has_documents=has_docs)
+
+        yield {"type": "status", "stage": "searching", "strategy": strategy}
+
+        doc_results: List[Dict[str, Any]] = []
+        web_results: List[Dict[str, Any]] = []
+
+        if strategy in ("documents", "hybrid") and has_docs:
+            doc_results = document_search_func(query=question, document_store=document_store, top_k=top_k_docs)
+
+        if strategy in ("web", "hybrid"):
+            web_results = web_search_func(query=question, max_results=max_web_results)
+
+        yield {
+            "type": "sources",
+            "strategy": strategy,
+            "doc_results": doc_results,
+            "web_results": web_results,
+        }
+
+        # Build context for LLM prompt
+        context_parts = []
+        if doc_results:
+            context_parts.append("=== LOCAL DOCUMENT CONTEXT ===")
+            for i, d in enumerate(doc_results, 1):
+                if "content" in d:
+                    context_parts.append(f"[{i}] Document: {d.get('filename')} (Page {d.get('page')})\nContent: {d.get('content')}")
+
+        if web_results:
+            context_parts.append("\n=== WEB SEARCH CONTEXT ===")
+            for i, w in enumerate(web_results, 1):
+                if "content" in w:
+                    context_parts.append(f"[{i}] Web Page: {w.get('title')} ({w.get('url')})\nSnippet: {w.get('content')}")
+
+        full_context = "\n\n".join(context_parts) if context_parts else "No background search context available."
+
+        system_instr = kwargs.get("system_prompt", """You are an intelligent AI Research Assistant.
+
+Answer questions clearly based on the retrieved context below. Choose the best format automatically:
+- Short paragraph for simple questions
+- Numbered steps for procedures / how-to questions
+- Bullet list for advantages, lists, features
+- Comparison table for X vs Y questions
+- Structured sections (## Short Answer, ## Key Findings, ## Explanation) for complex research
+- Simple plain language for beginner/explain-simply questions
+- Code blocks for programming questions
+
+Keep answers concise. Do not include source URLs or citations unless explicitly asked.
+Do not mention Haystack, vector stores, embeddings, or other backend details.""")
+
+        prompt = f"""{system_instr}
+
+Retrieved Context:
+{full_context}
+
+User Question: {question}
+
+Answer:"""
+
+        yield {"type": "status", "stage": "generating", "strategy": strategy}
+
+        for chunk in self.generator.run_stream(prompt=prompt):
+            yield {"type": "delta", "delta": chunk}
+
+        yield {"type": "done"}

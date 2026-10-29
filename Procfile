@@ -1,1 +1,1 @@
-web: python startup.py && streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+web: python startup.py && python -m uvicorn server:app --host 0.0.0.0 --port $PORT
